@@ -1,6 +1,6 @@
 [submodule "app"]
 	path = app
-	url = https://github.com/franciscoalro/winlator-redmi-note12s-app
+	url = https://github.com/franciscoalro/winlator-app-redmi-note12s
 	branch = main
 [submodule "vortek"]
 	path = vortek
