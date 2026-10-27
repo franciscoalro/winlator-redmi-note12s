@@ -1,0 +1,106 @@
+name: Build Winlator Redmi Note 12s
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-apk:
+    name: Build APK (arm64-v8a)
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout (with submodules)
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate submodules present
+        run: |
+          test -f app/app/build.gradle
+          test -f app/src/main/cpp/CMakeLists.txt
+          echo "app/build.gradle present"
+          echo "vortek: $(test -f vortek/src/main.c && echo OK || echo MISSING)"
+          echo "gladio: $(test -d gladio && echo OK || echo MISSING)"
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK (cmdline-tools)
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK platform, build-tools, NDK and CMake
+        run: |
+          set -e
+          sdkmanager "platforms;android-35" \
+                     "build-tools;35.0.0" \
+                     "ndk;24.0.8215888" \
+                     "cmake;3.22.1"
+          sdkmanager --licenses > /dev/null 2>&1 || true
+
+      - name: Generate keystore for release signing
+        run: |
+          set -e
+          KEYSTORE_PASS="${KEYSTORE_PASS:-winlator-rn12s}"
+          KEYALIAS="${KEYALIAS:-winlator_rn12s}"
+          keytool -genkeypair \
+            -v \
+            -keystore "${{ github.workspace }}/app/release.keystore" \
+            -alias "$KEYALIAS" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -storepass "$KEYSTORE_PASS" \
+            -keypass "$KEYSTORE_PASS" \
+            -dname "CN=Winlator Redmi Note 12s, OU=Mobile, O=WinlatorRN12S, L=BR, ST=BR, C=BR" > /dev/null 2>&1
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "${{ github.workspace }}/app/release.keystore" "$KEYSTORE_PASS" "$KEYALIAS" "$KEYSTORE_PASS" \
+            > "${{ github.workspace }}/app/keystore.properties"
+
+      - name: Set up gradle.properties for CI
+        run: |
+          printf 'org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8\norg.gradle.parallel=true\norg.gradle.caching=true\nandroid.useAndroidX=true\nandroid.enableJetifier=true\nandroid.nonFinalResIds=false\nandroid.nonTransitiveRClass=false\n' \
+            > "${{ github.workspace }}/app/gradle.properties"
+
+      - name: Grant execute permission to gradlew
+        run: chmod +x app/gradlew
+
+      - name: Build release APK (arm64-v8a)
+        working-directory: app
+        run: |
+          ./gradlew --no-daemon assembleRelease --stacktrace
+
+      - name: Rename and collect APK
+        run: |
+          set -e
+          APK=$(find app/app/build/outputs/apk -name "*.apk" -type f | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK produced by assembleRelease"
+            exit 1
+          fi
+          cp "$APK" "${{ github.workspace }}/Winlator-RedmiNote12s-11.2-rn12s-arm64.apk"
+          APK_SIZE=$(stat -c %s "${{ github.workspace }}/Winlator-RedmiNote12s-11.2-rn12s-arm64.apk" 2>/dev/null || stat -f %z "${{ github.workspace }}/Winlator-RedmiNote12s-11.2-rn12s-arm64.apk")
+          echo "APK size: $APK_SIZE bytes"
+          echo "APK_PATH=${{ github.workspace }}/Winlator-RedmiNote12s-11.2-rn12s-arm64.apk" >> "$GITHUB_ENV"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Winlator-RedmiNote12s-11.2-rn12s-arm64
+          path: ${{ env.APK_PATH }}
+          if-no-files-found: error
+          retention-days: 30
