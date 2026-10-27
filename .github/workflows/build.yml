@@ -52,9 +52,9 @@ jobs:
             "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip"
           echo "Downloaded: $(wc -c < /tmp/cmdline-tools.zip) bytes"
           unzip -q /tmp/cmdline-tools.zip -d /tmp/ctools
-          ls /tmp/ctools/
+          rm -rf "$ANDROID_HOME/cmdline-tools/latest"
           mv /tmp/ctools/cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
-          ls "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" && echo "sdkmanager installed"
+          ls "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" && echo "sdkmanager ok"
           rm -rf /tmp/cmdline-tools.zip /tmp/ctools
 
       - name: Configure sdkmanager and accept licenses
